@@ -1,0 +1,3 @@
+step 100000
+dump xram 0x3001 0x3008 8
+quit
