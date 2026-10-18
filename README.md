@@ -1,14 +1,14 @@
 # SDCC can skip a volatile memory read
 
-A program writes a byte to memory, then reads it back to check what is there.
-SDCC can return the byte it tried to write instead of reading memory again.
+SDCC can return a byte it tried to write instead of reading memory again.
 If a device changes that memory, the program can report the old value and
 mistakenly treat the write as successful.
 
 The destination is marked `volatile`, so the compiler must perform the read.
-This reproduction demonstrates the problem on MCS51 XDATA. All test sources
-are C, using SDCC's address-space and interrupt extensions. No physical
-device is needed.
+The problem has been observed on MCS51/DS390, STM8, Z80, and MOS6502.
+This repository includes the MCS51 XDATA example and a generic-pointer C case
+for the other targets. The MCS51 executable test uses SDCC's address-space
+and interrupt extensions.
 
 ## Example
 
@@ -37,7 +37,7 @@ mov  dpl,_readback_PARM_2    ; return the input byte
 ret                         ; no read from memory
 ```
 
-## Observed affected builds
+## Observed in builds
 
 The small `readback.c` expression returns the stored input instead of the
 destination's readback value on these tested, unmodified compiler builds:
@@ -57,6 +57,46 @@ destination's readback value on these tested, unmodified compiler builds:
 | 4.6.2 #16768 (binary snapshot) | Destination read absent. |
 | 4.6.4 #16957 (locally built source snapshot, 2026-10-03) | Destination read absent. |
 
+## Other observed targets
+
+Reviewed assembly for `generic_readback.c` shows the same wrong return value
+on these target/version combinations. Its pointer is `volatile unsigned char *`,
+without the MCS51-specific `__xdata` qualifier:
+
+| Target | 4.2.0 #13081 | 4.6.0 #16555 | 4.6.2 #16768 snapshot | 4.6.4 #16957 source snapshot |
+| --- | --- | --- | --- | --- |
+| STM8 | Read emitted, result discarded | Read absent | Read absent | Read absent |
+| Z80 | Read emitted, result discarded | Read absent | Read absent | Read absent |
+| MOS6502 | Read emitted, result discarded | Read absent | Read absent | Read absent |
+| MCS51 generic pointer | Read emitted, result discarded | Read absent | Read absent | Read absent |
+
+The DS390 small-memory profile also returns the wrong value on the ten
+release/snapshot builds in the table above. The two 4.2.10 SVN builds were
+checked separately: r13787 retains the
+load through local CSE, while r13788 removes it for MCS51 XDATA, MCS51 generic
+pointers, STM8, Z80, and MOS6502.
+
+To generate the generic case's assembly with an SDCC build supporting the
+chosen target, run:
+
+```sh
+make generic-assembly TARGET=stm8
+make generic-assembly TARGET=z80
+make generic-assembly TARGET=mos6502
+make generic-assembly TARGET=mcs51
+```
+
+The output is `build/<target>/generic_readback.asm`. Compare `readback`, which
+stores then reads, with `read_only`, which independently reads the destination.
+On the affected newer builds, `readback` returns the input without a destination
+read; `read_only` emits the destination read.
+
+For DS390, compile the XDATA example with:
+
+```sh
+make assembly SDCCFLAGS='-mds390 --model-small --std-c99'
+```
+
 ## Additional methods
 
 With uCsim's `s51` also installed, run:
@@ -64,6 +104,9 @@ With uCsim's `s51` also installed, run:
 ```sh
 make
 ```
+
+`make` succeeds when the known bug is reproduced. To require correct behavior
+when testing a compiler fix, use `make EXPECT=pass`.
 
 The executable test in `reproduce.c` does the following:
 

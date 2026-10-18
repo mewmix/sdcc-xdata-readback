@@ -1,10 +1,12 @@
 SDCC ?= sdcc
 S51 ?= s51
 SDCCFLAGS ?= -mmcs51 --std-c99
+TARGET ?= stm8
+GENERICFLAGS ?= --std-c99
 EXPECT ?= bug
 OUTPUT ?= build
 
-.PHONY: reproduce assembly
+.PHONY: reproduce assembly generic-assembly
 
 # Always rebuild so changing SDCC or SDCCFLAGS cannot reuse an old binary.
 reproduce:
@@ -34,3 +36,9 @@ assembly:
 	$(SDCC) --version
 	$(SDCC) $(SDCCFLAGS) -S readback.c -o "$(OUTPUT)/readback.asm"
 	sed -n '/^_readback:/,/^[[:space:]]*ret/p' "$(OUTPUT)/readback.asm"
+
+generic-assembly:
+	mkdir -p "$(OUTPUT)/$(TARGET)"
+	$(SDCC) --version > "$(OUTPUT)/$(TARGET)/compiler-version.txt"
+	$(SDCC) -m$(TARGET) $(GENERICFLAGS) -S generic_readback.c -o "$(OUTPUT)/$(TARGET)/generic_readback.asm"
+	@echo "Compare readback and read_only in $(OUTPUT)/$(TARGET)/generic_readback.asm"
